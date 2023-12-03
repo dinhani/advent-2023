@@ -8,8 +8,8 @@ use nom::IResult;
 
 fn main() -> eyre::Result<()> {
     let input = include_str!("day1.txt");
-    let mut parser_p1 = alt((digit, not_digit));
-    let mut parser_p2 = alt((digit, digit_name, not_digit));
+    let mut parser_p1 = alt((parse_digit, parse_not_digit));
+    let mut parser_p2 = alt((parse_digit, parse_digit_name, parse_not_digit));
 
     let mut total_p1: usize = 0;
     let mut total_p2: usize = 0;
@@ -32,16 +32,18 @@ fn main() -> eyre::Result<()> {
 
     println!("Part 1: {}", total_p1);
     println!("Part 2: {}", total_p2);
-
     Ok(())
 }
 
-fn digit(input: &str) -> IResult<&str, Option<u8>> {
+// -----------------------------------------------------------------------------
+// NOM parsers
+// -----------------------------------------------------------------------------
+fn parse_digit(input: &str) -> IResult<&str, Option<u8>> {
     let (remaining, value) = one_of("123456789")(input)?;
     Ok((remaining, Some(value.to_digit(10).unwrap() as u8)))
 }
 
-fn digit_name(input: &str) -> IResult<&str, Option<u8>> {
+fn parse_digit_name(input: &str) -> IResult<&str, Option<u8>> {
     let (_, value) = alt((
         value(1, tag("one")),
         value(2, tag("two")),
@@ -56,7 +58,7 @@ fn digit_name(input: &str) -> IResult<&str, Option<u8>> {
     Ok((&input[1..input.len()], Some(value)))
 }
 
-fn not_digit(input: &str) -> IResult<&str, Option<u8>> {
+fn parse_not_digit(input: &str) -> IResult<&str, Option<u8>> {
     let (remaining, _) = take(1u8)(input)?;
     Ok((remaining, None))
 }
