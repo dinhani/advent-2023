@@ -27,6 +27,7 @@ fn main() -> eyre::Result<()> {
         .map(|g| g.id)
         .collect();
     let valid_game_ids_sum: usize = valid_games_ids.into_iter().sum();
+    println!("Part 1: {}", valid_game_ids_sum);
 
     // calculate part 2 answer
     let game_draw_products: Vec<usize> = games
@@ -38,9 +39,8 @@ fn main() -> eyre::Result<()> {
         })
         .collect();
     let game_draw_products_sum: usize = game_draw_products.iter().sum();
-
-    println!("Part 1: {}", valid_game_ids_sum);
     println!("Part 2: {}", game_draw_products_sum);
+
     Ok(())
 }
 
