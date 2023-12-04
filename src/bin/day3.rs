@@ -50,25 +50,25 @@ fn main() -> eyre::Result<()> {
     // -------------------------------------------------------------------------
     // for each number, sum the ones connected to a symbol
     // -------------------------------------------------------------------------
-    let mut numbers_total: usize = 0;
+    let mut total_p1: usize = 0;
     for number in &numbers {
         for (row, col) in number.0.adjancent_positions() {
             if row >= grid_rows || col >= grid_cols {
                 continue;
             }
             if let Some(EnginePart::Symbol { .. }) = grid[row][col] {
-                numbers_total += number.1;
+                total_p1 += number.1;
                 break;
             }
         }
     }
-    println!("Part 1: {}", numbers_total);
+    println!("Part 1: {}", total_p1);
 
     //
     // -------------------------------------------------------------------------
     // for each gear, sum the ones connected to two numbers
     // -------------------------------------------------------------------------
-    let mut gears_total: usize = 0;
+    let mut total_p2: usize = 0;
     for symbol in &symbols {
         // check is gear
         if !symbol.1 {
@@ -88,10 +88,10 @@ fn main() -> eyre::Result<()> {
 
         // increment only if connected to two
         if connected.len() == 2 {
-            gears_total += connected.iter().map(|x| x.1).product::<usize>()
+            total_p2 += connected.iter().map(|x| x.1).product::<usize>()
         }
     }
-    println!("Part 2: {}", gears_total);
+    println!("Part 2: {}", total_p2);
 
     Ok(())
 }

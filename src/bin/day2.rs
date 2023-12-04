@@ -2,19 +2,20 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::digit1;
 use nom::multi::separated_list1;
-use nom::sequence::preceded;
 use nom::sequence::separated_pair;
+use nom::sequence::tuple;
 use nom::IResult;
 
 fn main() -> eyre::Result<()> {
     let input = include_str!("day2.txt");
 
     // parse games
-    let mut games = Vec::with_capacity(100);
+    let mut parser = tuple((parse_game_id, parse_sets));
+
+    let mut games = Vec::new();
     for line in input.lines() {
-        let (line, game_id) = parse_game_id(line)?;
-        let (_, sets) = parse_sets(line)?;
-        let game = Game { id: game_id, sets };
+        let (_, (id, sets)) = parser(line)?;
+        let game = Game { id, sets };
         games.push(game);
     }
 
@@ -26,8 +27,8 @@ fn main() -> eyre::Result<()> {
         })
         .map(|g| g.id)
         .collect();
-    let valid_game_ids_sum: usize = valid_games_ids.into_iter().sum();
-    println!("Part 1: {}", valid_game_ids_sum);
+    let total_p1: usize = valid_games_ids.into_iter().sum();
+    println!("Part 1: {}", total_p1);
 
     // calculate part 2 answer
     let game_draw_products: Vec<usize> = games
@@ -38,8 +39,8 @@ fn main() -> eyre::Result<()> {
                 .product()
         })
         .collect();
-    let game_draw_products_sum: usize = game_draw_products.iter().sum();
-    println!("Part 2: {}", game_draw_products_sum);
+    let total_p2: usize = game_draw_products.iter().sum();
+    println!("Part 2: {}", total_p2);
 
     Ok(())
 }
@@ -48,9 +49,8 @@ fn main() -> eyre::Result<()> {
 // NOM parsers
 // -----------------------------------------------------------------------------
 fn parse_game_id(input: &str) -> IResult<&str, usize> {
-    let (remaining, game_id) = preceded(tag("Game "), digit1)(input)?;
+    let (remaining, (_, game_id, _)) = tuple((tag("Game "), digit1, tag(": ")))(input)?;
     let game_id = game_id.parse::<usize>().unwrap();
-    let (remaining, _) = tag(": ")(remaining)?;
     Ok((remaining, game_id))
 }
 
