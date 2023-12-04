@@ -47,7 +47,7 @@ fn main() -> eyre::Result<()> {
 // -----------------------------------------------------------------------------
 // NOM parsers
 // -----------------------------------------------------------------------------
-fn parse_game_id(input: &str) -> IResult<&str, GameId> {
+fn parse_game_id(input: &str) -> IResult<&str, usize> {
     let (remaining, game_id) = preceded(tag("Game "), digit1)(input)?;
     let game_id = game_id.parse::<usize>().unwrap();
     let (remaining, _) = tag(": ")(remaining)?;
@@ -64,26 +64,24 @@ fn parse_set(input: &str) -> IResult<&str, Set> {
 }
 
 fn parse_draw(input: &str) -> IResult<&str, Draw> {
-    let (remaining, (qty, color)) = separated_pair(digit1, tag(" "), color)(input)?;
+    let (remaining, (quantity, color)) = separated_pair(digit1, tag(" "), parse_color)(input)?;
     let draw = Draw {
-        quantity: qty.parse::<usize>().unwrap(),
+        quantity: quantity.parse::<usize>().unwrap(),
         color: Color::try_from(color).unwrap(),
     };
     Ok((remaining, draw))
 }
 
-fn color(input: &str) -> IResult<&str, &str> {
+fn parse_color(input: &str) -> IResult<&str, &str> {
     alt((tag("red"), tag("blue"), tag("green")))(input)
 }
 
 // -----------------------------------------------------------------------------
 // Structs
 // -----------------------------------------------------------------------------
-type GameId = usize;
-
 #[derive(Debug)]
 struct Game {
-    id: GameId,
+    id: usize,
     sets: Vec<Set>,
 }
 

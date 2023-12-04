@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Debug;
+use std::ops::RangeInclusive;
 
 use nom::branch::alt;
 use nom::bytes::complete::is_not;
@@ -16,73 +17,81 @@ fn main() -> eyre::Result<()> {
     let input = Span::new(include_str!("day3.txt"));
 
     // parse engine parts
-    let parser = alt((parse_number, parse_symbol, parse_empty));
-    let (_, engine_parts) = many0(parser)(input)?;
-    let symbols: Vec<_> = engine_parts
-        .iter()
-        .filter(|x| matches!(x, EnginePart::Symbol { .. }))
-        .collect();
-    let numbers: Vec<_> = engine_parts
-        .iter()
-        .filter(|x| matches!(x, EnginePart::Number { .. }))
-        .collect();
+    let parser = alt((parse_number, parse_symbol, parse_empty, parse_line_ending));
+    let engine_parts: Vec<EnginePart> = many0(parser)(input)?.1.into_iter().flatten().collect();
 
-    // calculate distance between each number position and each symbol to determine
-    // numbers that are connected to symbols
-    let mut connected_gears: HashMap<&EnginePart, Vec<usize>> = HashMap::new();
-    let mut connected_numbers: Vec<usize> = Vec::with_capacity(numbers.len());
-    for number in numbers {
-        let mut added_to_connected = false;
-        let mut added_to_gears = false;
-
-        let number_value = match number {
-            EnginePart::Number { number, .. } => number,
-            _ => panic!("number should be EnginePart::Number"),
-        };
-
-        for number_col in number.column_start()..=number.column_end() {
-            for symbol in &symbols {
-                let symbol_is_gear = match symbol {
-                    EnginePart::Symbol { gear, .. } => gear,
-                    _ => panic!("symbol should be EnginePart::Symbol"),
-                };
-
-                // calculate distance between number and symbol
-                let line_dist = (number.line() as isize - symbol.line() as isize).abs();
-                let col_dist = (number_col as isize - symbol.column_start() as isize).abs();
-                let connected = line_dist <= 1 && col_dist <= 1;
-
-                // track number as connected
-                if connected && !added_to_connected {
-                    connected_numbers.push(*number_value);
-                    added_to_connected = true;
-                }
-
-                // if gear, add number to gear map
-                if connected && *symbol_is_gear && !added_to_gears {
-                    connected_gears
-                        .entry(symbol)
-                        .or_default()
-                        .push(*number_value);
-                    added_to_gears = true;
-                }
-            }
+    // generate grid
+    let grid_rows = engine_parts.iter().last().unwrap().line() + 1;
+    let grid_cols = engine_parts.iter().last().unwrap().column_end() + 1;
+    let mut grid: Vec<Vec<Option<&EnginePart>>> = vec![vec![None; grid_cols]; grid_rows];
+    for part in &engine_parts {
+        for part_col in part.column_range() {
+            grid[part.line()][part_col] = Some(part)
         }
     }
 
-    // calculate part 1
-    let connected_numbers_sum: usize = connected_numbers.iter().sum();
-    println!("Part 1: {}", connected_numbers_sum);
-
-    // calculate part 2
-    let connected_gears: Vec<usize> = connected_gears
-        .values()
-        .filter(|x| x.len() == 2)
-        .map(|x| x.iter().product())
+    // extract engine elements
+    let symbols: Vec<_> = engine_parts
+        .iter()
+        .filter_map(|x| match x {
+            EnginePart::Symbol { gear, .. } => Some((x, gear)),
+            _ => None,
+        })
         .collect();
 
-    let connected_gears_sum: usize = connected_gears.iter().sum();
-    println!("Part 2: {}", connected_gears_sum);
+    let numbers: Vec<_> = engine_parts
+        .iter()
+        .filter_map(|x| match x {
+            EnginePart::Number { number, .. } => Some((x, number)),
+            _ => None,
+        })
+        .collect();
+
+    // -------------------------------------------------------------------------
+    // for each number, sum the ones connected to a symbol
+    // -------------------------------------------------------------------------
+    let mut numbers_total: usize = 0;
+    for number in &numbers {
+        for (row, col) in number.0.adjancent_positions() {
+            if row >= grid_rows || col >= grid_cols {
+                continue;
+            }
+            if let Some(EnginePart::Symbol { .. }) = grid[row][col] {
+                numbers_total += number.1;
+                break;
+            }
+        }
+    }
+    println!("Part 1: {}", numbers_total);
+
+    //
+    // -------------------------------------------------------------------------
+    // for each gear, sum the ones connected to two numbers
+    // -------------------------------------------------------------------------
+    let mut gears_total: usize = 0;
+    for symbol in &symbols {
+        // check is gear
+        if !symbol.1 {
+            continue;
+        }
+
+        // extract connected numbers
+        let mut connected = HashSet::new();
+        for (row, col) in symbol.0.adjancent_positions() {
+            if row >= grid_rows || col >= grid_cols {
+                continue;
+            }
+            if let Some(number_part @ EnginePart::Number { number, .. }) = grid[row][col] {
+                connected.insert((number_part, *number));
+            }
+        }
+
+        // increment only if connected to two
+        if connected.len() == 2 {
+            gears_total += connected.iter().map(|x| x.1).product::<usize>()
+        }
+    }
+    println!("Part 2: {}", gears_total);
 
     Ok(())
 }
@@ -90,31 +99,36 @@ fn main() -> eyre::Result<()> {
 // -----------------------------------------------------------------------------
 // NOM parsers
 // -----------------------------------------------------------------------------
-fn parse_number(input: Span) -> IResult<Span, EnginePart> {
-    let (remaining, number) = digit1(input)?;
+fn parse_number(input: Span) -> IResult<Span, Option<EnginePart>> {
+    let (remaining, span) = digit1(input)?;
     Ok((
         remaining,
-        EnginePart::Number {
-            span: number,
-            number: number.parse::<usize>().unwrap(),
-        },
+        Some(EnginePart::Number {
+            span,
+            number: span.parse::<usize>().unwrap(),
+        }),
     ))
 }
 
-fn parse_symbol(input: Span) -> IResult<Span, EnginePart> {
-    let (remaining, symbol) = is_not(".0123456789\n")(input)?;
+fn parse_symbol(input: Span) -> IResult<Span, Option<EnginePart>> {
+    let (remaining, span) = is_not(".0123456789\n")(input)?;
     Ok((
         remaining,
-        EnginePart::Symbol {
-            span: symbol,
-            gear: symbol.fragment() == &"*",
-        },
+        Some(EnginePart::Symbol {
+            span,
+            gear: span.fragment() == &"*",
+        }),
     ))
 }
 
-fn parse_empty(input: Span) -> IResult<Span, EnginePart> {
-    let (remaining, empty) = alt((tag("."), line_ending))(input)?;
-    Ok((remaining, EnginePart::Empty { span: empty }))
+fn parse_empty(input: Span) -> IResult<Span, Option<EnginePart>> {
+    let (remaining, span) = tag(".")(input)?;
+    Ok((remaining, Some(EnginePart::Empty { span })))
+}
+
+fn parse_line_ending(input: Span) -> IResult<Span, Option<EnginePart>> {
+    let (remaining, _) = line_ending(input)?;
+    Ok((remaining, None))
 }
 
 // -----------------------------------------------------------------------------
@@ -149,27 +163,67 @@ impl Debug for EnginePart<'_> {
 }
 
 impl EnginePart<'_> {
+    fn adjancent_positions(&self) -> Vec<(usize, usize)> {
+        let mut adjancent = Vec::new();
+        // top left
+        adjancent.push((
+            self.line().saturating_sub(1),
+            self.column_start().saturating_sub(1),
+        ));
+
+        // top right
+        adjancent.push((self.line().saturating_sub(1), self.column_end() + 1));
+
+        // top
+        for col in self.column_range() {
+            adjancent.push((self.line().saturating_sub(1), col));
+        }
+
+        // bottom left
+        adjancent.push((self.line() + 1, self.column_start().saturating_sub(1)));
+
+        // bottom right
+        adjancent.push((self.line() + 1, self.column_end() + 1));
+
+        // bottom
+        for col in self.column_range() {
+            adjancent.push((self.line() + 1, col));
+        }
+
+        // left
+        adjancent.push((self.line(), self.column_start().saturating_sub(1)));
+
+        // right
+        adjancent.push((self.line(), self.column_end() + 1));
+
+        adjancent
+    }
+
     fn line(&self) -> usize {
         match self {
-            EnginePart::Empty { span } => span.location_line() as usize,
-            EnginePart::Symbol { span, .. } => span.location_line() as usize,
-            EnginePart::Number { span, .. } => span.location_line() as usize,
+            EnginePart::Empty { span } => (span.location_line() as usize) - 1,
+            EnginePart::Symbol { span, .. } => (span.location_line() as usize) - 1,
+            EnginePart::Number { span, .. } => (span.location_line() as usize) - 1,
         }
     }
 
     fn column_start(&self) -> usize {
         match self {
-            EnginePart::Empty { span } => span.get_column(),
-            EnginePart::Symbol { span, .. } => span.get_column(),
-            EnginePart::Number { span, .. } => span.get_column(),
+            EnginePart::Empty { span } => span.get_column() - 1,
+            EnginePart::Symbol { span, .. } => span.get_column() - 1,
+            EnginePart::Number { span, .. } => span.get_column() - 1,
         }
     }
 
     fn column_end(&self) -> usize {
         match self {
-            EnginePart::Empty { span } => span.get_column(),
-            EnginePart::Symbol { span, .. } => span.get_column(),
-            EnginePart::Number { span, .. } => span.get_column() + span.fragment().len() - 1,
+            EnginePart::Empty { .. } => self.column_start(),
+            EnginePart::Symbol { .. } => self.column_start(),
+            EnginePart::Number { span, .. } => self.column_start() + span.fragment().len() - 1,
         }
+    }
+
+    fn column_range(&self) -> RangeInclusive<usize> {
+        self.column_start()..=self.column_end()
     }
 }
